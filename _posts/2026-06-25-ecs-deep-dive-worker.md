@@ -3,7 +3,7 @@ layout: post
 title: "ECS Deep Dive — Worker 마이그레이션을 맡고, 맨땅에서 ECS 내부를 파헤친 기록"
 date: 2026-06-25 09:00:00 +0900
 categories: [블로그]
-tags: []
+tags: [ECS, AWS, 컨테이너, 오케스트레이션, awsvpc, ENI, 네트워킹, cgroup]
 mermaid: true
 ---
 
@@ -112,6 +112,49 @@ flowchart TB
 여기서 헷갈리기 쉬운 포인트 하나. **명령은 누가 누구에게 보내는 걸까?**
 
 control plane이 agent에게 "이거 해라"라고 push하는 게 아니다. 반대로 **agent가 control plane에 주기적으로 찾아가서 "할 일 있나요? 제 상태는 이래요"라고 polling**한다. 이 heartbeat가 끊기면 control plane은 "저 인스턴스 죽었나?"를 판단한다. (뒤의 모니터링 파트에서 다시 나온다.)
+
+---
+
+# Launch Type — Data Plane을 누가 관리하나 (EC2 vs Fargate)
+
+방금 Data Plane을 "우리 소유(EC2)"라고 했는데, 사실 이건 선택지 중 하나다. **컨테이너가 실제로 도는 인프라를 누가 관리하느냐**를 정하는 게 **launch type**이고, 크게 두 가지다.
+
+## EC2 launch type — 내가 직접 인스턴스를 굴린다
+
+우리가 EC2 인스턴스를 띄우고 거기에 ECS Agent를 올려 클러스터에 등록한다. 지금까지 설명한 "Data Plane = 우리 EC2 + ECS Agent" 구조가 바로 이거다.
+
+- **장점**: 인스턴스를 완전히 통제한다. 인스턴스 타입(CPU/메모리/GPU) 선택, AMI 커스텀, 호스트에 데몬(모니터링 에이전트 등) 상주, 예약·스팟 인스턴스로 비용 최적화.
+- **단점**: 인스턴스 패치·용량 계획·스케일링(ASG)을 직접 챙겨야 한다. bin-packing도 신경 써야 하고, 놀고 있는 용량은 그대로 비용이 샌다.
+
+## Fargate — 인프라는 AWS가, 나는 컨테이너만
+
+Fargate는 **서버리스**다. EC2 인스턴스를 아예 안 띄운다. Task에 "vCPU 0.5, 메모리 1GB"처럼 자원만 지정하면 AWS가 알아서 어딘가에 컨테이너를 띄워준다. 우리 눈엔 인스턴스도 ECS Agent도 안 보인다.
+
+- **장점**: 인프라 관리가 사라진다. 패치·용량 계획이 없고, Task 단위로만 생각하면 된다. 0에서 갑자기 치솟는 트래픽에도 빠르게 대응.
+- **단점**: 호스트 레벨 제어가 없다(데몬 상주 불가, 인스턴스 타입 선택 불가). 비용은 Task의 vCPU·메모리 × 시간으로 매겨져서, 24시간 풀로 돌리는 워크로드는 EC2보다 비쌀 수 있다.
+
+```mermaid
+flowchart TB
+    subgraph EC2T["EC2 launch type — 내가 관리"]
+        ME1["나"] -->|"인스턴스 띄우고 관리"| INST["EC2 + ECS Agent"]
+        INST --> TK1["Task"]
+    end
+    subgraph FGT["Fargate — AWS가 관리"]
+        ME2["나"] -->|"Task에 자원만 지정"| FG["AWS 관리 인프라<br/>(인스턴스 안 보임)"]
+        FG --> TK2["Task"]
+    end
+    style FGT fill:#eef,stroke:#33a,color:#000
+```
+
+| 항목 | EC2 launch type | Fargate |
+|---|---|---|
+| 인프라 관리 | 내가 (인스턴스·패치·스케일) | AWS가 (서버리스) |
+| 제어 수준 | 높음 (타입·AMI·데몬·GPU) | 낮음 (Task 자원만) |
+| 비용 모델 | 인스턴스 시간 (스팟·예약 가능) | Task vCPU·메모리 × 시간 |
+| 호스트 데몬 | 가능 | 불가 |
+| 적합 | 비용 최적화·호스트 데몬·GPU·꾸준한 부하 | 운영 부담 최소화·가변/간헐 트래픽 |
+
+> 💡 어느 쪽이든 **부팅 플로우·모니터링·reconciliation 원리는 똑같다.** Fargate는 "Data Plane을 AWS가 대신 관리"할 뿐, ECS가 Task를 desired만큼 유지하고 헬스를 보는 동작은 동일하다. 그래서 이 글의 나머지 내용은 두 방식 모두에 적용된다. (단, 앞서 나온 "호스트의 모니터링 에이전트에 localhost로 못 닿는다" 같은 얘기는 호스트가 있는 EC2 launch type 기준이다. Fargate엔 그 호스트 개념 자체가 없다.)
 
 ---
 
