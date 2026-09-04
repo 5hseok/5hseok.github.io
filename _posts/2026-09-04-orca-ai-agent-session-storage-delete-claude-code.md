@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Orca 컨트리뷰터가 됐다 — AI 에이전트가 남긴 흔적을 지우는 일"
+title: "Orca 컨트리뷰터가 됐다 — Agent 세션 삭제 기능 추가"
 date: 2026-09-04 09:00:00 +0900
 categories: [블로그]
 tags: [오픈소스, 컨트리뷰션, AI에이전트, ClaudeCode, Electron, IPC, 코드리뷰, TypeScript]
