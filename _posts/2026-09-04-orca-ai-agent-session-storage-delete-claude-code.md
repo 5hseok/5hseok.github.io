@@ -1,95 +1,100 @@
 ---
 layout: post
-title: "16 AI Agents, 16 Ways to Store a Session — What I Learned Deleting Them"
+title: "Orca 컨트리뷰터가 됐다 — AI 에이전트가 남긴 흔적을 지우는 일"
 date: 2026-09-04 09:00:00 +0900
 categories: [블로그]
-tags: [open-source, ai-agents, claude-code, electron, ipc, typescript, code-review]
+tags: [오픈소스, 컨트리뷰션, AI에이전트, ClaudeCode, Electron, IPC, 코드리뷰, TypeScript]
 ---
 
-# I put code into the tool I use every day
+# 내가 매일 쓰는 도구에 코드를 넣었다
 
-Not many people run just one AI coding agent anymore. I mostly use Claude Code, with Codex, Gemini, and Copilot mixed in depending on the task. That habit is how I ended up on an editor built around running several agents at once: [Orca](https://github.com/stablyai/orca).
+요즘 AI 코딩 에이전트를 하나만 쓰는 사람은 별로 없다. 나도 Claude Code를 주로 쓰면서 Codex, Gemini, Copilot을 상황 따라 섞어 쓴다. 그러다 보니 에이전트를 여러 개 동시에 굴리는 걸 전제로 만든 에디터를 쓰게 됐고, 그게 [Orca](https://github.com/stablyai/orca)였다.
 
-Using it, something kept bothering me. But it was the kind of problem you can only fix by touching someone else's codebase. Until then, "contributing to open source" meant fixing typos or improving docs to me. This meant building a whole feature and getting it in.
+쓰다 보니 불편한 게 눈에 밟혔다. 그런데 이건 남의 코드베이스에 손을 대야 고칠 수 있는 문제였다. 그전까지 오픈소스 기여라고 하면 오탈자 수정이나 문서 개선 정도를 떠올렸는데, 이건 기능 하나를 통째로 만들어 넣어야 했다.
 
-I opened an issue first. A few weeks later it was merged. **[PR #10249](https://github.com/stablyai/orca/pull/10249) — the first code of mine to land in someone else's project.**
+이슈부터 올려봤고, 몇 주 뒤에 그게 머지됐다. **[PR #10249](https://github.com/stablyai/orca/pull/10249) — 처음으로 남의 프로젝트에 들어간 내 코드다.**
 
-![Orca's default layout — agent sessions and worktrees managed in one window](https://media.vlpt.us/images/5hseok/post/f93444a2-4a92-41cf-aba4-356597fd3aaa/orca-layout-default.png)
+![Orca 기본 레이아웃 — 에이전트 세션과 워크트리를 한 창에서 관리한다](https://media.vlpt.us/images/5hseok/post/f93444a2-4a92-41cf-aba4-356597fd3aaa/orca-layout-default.png)
 
-This is a record of what I did in that repo afterwards, and more importantly, **what I learned handling the data agents leave behind on your machine**.
-
----
-
-# What I worked on
-
-Five PRs and six issues so far.
-
-![Table: PRs and issues so far](https://media.vlpt.us/images/5hseok/post/ad5d842b-072c-4f88-89cb-89e4cd0beb4e/table1_9ctut3j5.png)
-
-
-Lining them up, they had something in common. **Most only happen once you run more than one agent.**
-
-- Agent session history piles up with no way to retire any of it (#10249)
-- A worktree an agent created temporarily disappears from the list with no way to get it back (#11275)
-- Code written by an agent and code written by me are formatted differently, so diffs get noisy (#13757)
-
-None of these come up when you have a single editor open and no agents. They appeared when agents started creating, editing, and deleting files on my behalf — which also means the tooling hasn't caught up yet.
-
-The rest of this post is about the first one, which took the longest.
+이 글은 그 뒤로 이 레포에서 뭘 했는지, 그리고 **에이전트가 로컬에 남기는 데이터를 다루면서 뭘 알게 됐는지**에 대한 기록이다.
 
 ---
 
-# Agent session history never goes away
+# 내가 한 작업들
 
-Orca has a panel called **AI Vault**. It sweeps every local agent session on your machine — Claude, Gemini, Copilot, Cursor, Codex, **16 providers** in total — into one list. You can jump to an old conversation, resume it, or open its log file.
+지금까지 PR 5개와 이슈 6개를 올렸다.
 
-![The Agent Session History panel with its Workspace / Project / All tabs](https://media.vlpt.us/images/5hseok/post/7d27d520-8519-47d3-b046-7cddddcdeab9/ai-vault-session-list.png)
+| 작업 | 내용 | 상태 |
+|---|---|---|
+| [PR #10249](https://github.com/stablyai/orca/pull/10249) | 에이전트 세션 기록 삭제 | **머지** |
+| [PR #13757](https://github.com/stablyai/orca/pull/13757) | 저장하면 프로젝트 포맷터를 실행 | 리뷰 중 |
+| [PR #11275](https://github.com/stablyai/orca/pull/11275) | 숨겨진 에이전트 워크트리 개별 복구 | 닫힘 (메인테이너 PR로 대체) |
+| [PR #10152](https://github.com/stablyai/orca/pull/10152) | 사이드바 좌우 위치 설정 | 리뷰 중 |
+| [PR #10076](https://github.com/stablyai/orca/pull/10076) | 탭 분할 단축키 | 리뷰 중 |
 
-*The AI Vault panel. The `⋯` on the right of a row is the session menu. (Screenshot from [PR #11419](https://github.com/stablyai/orca/pull/11419))*
+정리하고 보니 공통점이 있었다. **대부분 에이전트를 여러 개 굴릴 때만 생기는 문제**였다.
 
-The problem was that **once a session exists, it never leaves the list**. A session from a worktree merged weeks ago, one from a feature that already shipped, one attached to a branch that no longer exists. They sat right next to the two or three I actually work in today. Scrolling past them was the normal state of using the panel.
+- 에이전트 세션 기록이 계속 쌓이는데 지울 방법이 없다 (#10249)
+- 에이전트가 임시로 만든 워크트리가 목록에서 사라져서 되찾을 수 없다 (#11275)
+- 에이전트가 쓴 코드와 내가 쓴 코드의 포맷이 달라서 diff가 지저분해진다 (#13757)
 
-This wasn't about disk space. It was that **there was no way to say "this one is done, stop showing it to me."** The row menu offered Jump, Resume, Continue in New Session, Copy, Open/Reveal Log — nothing that retires a session. The filters (scope, agent, hide-empty, search) narrow the view by category; they can't express "this specific session belongs to work that is finished." The only workaround was to quit the app and delete the files from a terminal.
+혼자 에디터 하나 켜놓고 쓸 때는 안 생기는 문제들이다. 에이전트가 나 대신 파일을 만들고 고치고 지우기 시작하면서 새로 생긴 문제고, 그래서 아직 도구가 못 따라간 자리이기도 했다.
 
-I wrote exactly that up as an issue ([#9876](https://github.com/stablyai/orca/issues/9876)). Opening an issue before writing code was deliberate: if a maintainer is already on it, the work collides, and if the direction is unwanted, I'd have built the whole thing only to throw it away.
+이 중에서 가장 오래 붙잡았던 첫 번째 것을 자세히 적는다.
 
-A few days later:
+---
+
+# 에이전트 세션 기록은 지워지지 않는다
+
+Orca에는 **AI Vault**라는 패널이 있다. 내 컴퓨터에 남아 있는 모든 에이전트 세션 기록 — Claude, Gemini, Copilot, Cursor, Codex 등 **16개 프로바이더** — 를 한 목록으로 긁어모아 보여준다. 예전 대화로 점프하거나, 이어서 재개하거나, 로그 파일을 열 수 있다.
+
+![Agent Session History 패널 — Workspace/Project/All 탭과 세션 행](https://media.vlpt.us/images/5hseok/post/7d27d520-8519-47d3-b046-7cddddcdeab9/ai-vault-session-list.png)
+
+*AI Vault 패널. 행 오른쪽 `⋯`이 세션 메뉴다. (스크린샷 출처: [PR #11419](https://github.com/stablyai/orca/pull/11419))*
+
+문제는 **한 번 생긴 세션이 절대 목록에서 사라지지 않는다**는 거였다. 몇 주 전에 머지된 워크트리에서 돌린 세션, 이미 배포된 기능을 만들던 세션, 없어진 브랜치에 붙어 있던 세션. 그게 오늘 내가 실제로 쓰는 두세 개 옆에 계속 붙어 있었다. 스크롤해서 지나치는 게 이 패널을 쓰는 정상 상태였다.
+
+디스크 용량 얘기가 아니었다. **"이건 끝난 일이니까 그만 보여줘"라고 말할 방법이 없다**는 게 문제였다. 행 메뉴에는 Jump, Resume, Continue in New Session, Copy, Open/Reveal Log가 있었지만 세션을 은퇴시키는 항목은 없었다. 필터(스코프·에이전트·빈 세션 숨기기·검색)는 카테고리로 범위를 좁힐 뿐, "이 특정 세션은 끝난 일에 속한다"를 표현하지 못한다. 남은 방법은 앱을 끄고 터미널에서 파일을 직접 지우는 것뿐이었다.
+
+이 내용을 그대로 이슈로 적었다 ([#9876](https://github.com/stablyai/orca/issues/9876)). 코드를 먼저 쓰지 않고 이슈부터 올린 건 의도적이었다. 메인테이너가 이미 같은 걸 하고 있으면 작업이 충돌하고, 아예 원하지 않는 방향이면 다 만들고 나서 버려야 하니까.
+
+며칠 뒤 답이 달렸다.
 
 > good idea. would be useful to clean up that session history
 
-Instead of jumping straight into the implementation, I posted how I planned to build it first — which providers I'd support, how the unsupported ones would be shown, how a renderer-supplied path would be validated. Then I asked:
+여기서 바로 구현에 들어가지 않고, 어떻게 만들 계획인지를 댓글로 먼저 적었다. 어떤 프로바이더부터 지원할지, 지원 못 하는 건 어떻게 보여줄지, 렌더러가 준 경로를 어떻게 검증할지까지. 그리고 마지막에 이렇게 물었다.
 
 > Would you be open to assigning this to me and reviewing a PR? Happy to defer if you're already on it — just didn't want the work to collide.
 
-The issue was assigned to me. From that point it stopped being "code nobody asked for" and became work I'd been handed.
+assignee가 나로 지정됐다. 이때부터는 "허락 없이 만든 코드"가 아니라 "맡은 작업"이 됐다.
 
-> 💡 Later, another user commented on the same issue that their Pi agent sessions were piling up. Pi is one of the single-file providers, so it was already in the first supported group and I could say so directly. File the issue early and the people with the same problem come to you.
+> 💡 나중에 다른 사용자가 같은 이슈에 "Pi 에이전트 세션이 계속 쌓인다"고 댓글을 달았다. Pi는 파일 하나가 세션 하나인 구조라 이미 첫 지원 그룹에 들어가 있었고, 그걸 그대로 답해줄 수 있었다. 이슈를 먼저 올려두면 나중에 같은 불편을 겪은 사람이 찾아온다.
 
 ---
 
-# 16 agents store a session 16 different ways
+# 에이전트 16개는 세션을 16가지 방식으로 저장한다
 
-Read the feature description and it sounds like adding a Delete item to a menu and calling `fs.unlink`. That's what I thought too, at first.
+기능 설명만 보면 메뉴에 Delete 하나 추가하고 `fs.unlink` 부르면 끝날 것 같다. 실제로 처음엔 나도 그렇게 생각했다.
 
-I got stuck on the very first question. **Does deleting one agent session mean deleting one file?**
+막힌 건 첫 번째 질문에서였다. **에이전트 세션 하나를 지운다는 게, 파일 하나를 지운다는 뜻인가?**
 
-What the scanner surfaces for each session is **a single path**. Whether that path is the whole session depends on the agent. So I set one rule:
+스캐너가 목록에 올려주는 건 세션마다 **경로 하나**다. 그런데 그 경로가 세션의 전부인지는 에이전트마다 다르다. 여기서 판단 기준을 하나 정했다.
 
-> **Only delete what can be deleted completely.** An app that says "deleted" while the conversation is still on disk — or while the row comes back on the next scan — is worse than one with no delete at all.
+> **완전하게 지울 수 있는 것만 지운다.** "삭제됐습니다"라고 말해놓고 실제로는 대화가 디스크에 남아 있거나 다음 스캔에서 행이 되살아나는 건, 삭제 기능이 아예 없는 것보다 나쁘다.
 
-Applying that rule meant checking how all 16 agents physically store a session. They fell into three groups.
+이 기준을 적용하려면 16개 에이전트가 각각 세션을 **어떤 모양으로** 저장하는지 전부 확인해야 했다. 결과는 세 부류로 나뉘었다.
 
-![How each agent stores a session](https://media.vlpt.us/images/5hseok/post/76fc4afb-e524-4528-b976-d9a33ae28f4e/agent-session-shapes.png)
+![에이전트별 세션 저장 모양](https://media.vlpt.us/images/5hseok/post/f8755ebd-71a9-4319-af42-6efc6c10b8f0/agent-session-shapes.png)
 
-The third group was the problem. **Four agents couldn't be deleted at all.**
+문제는 세 번째 부류였다. **아예 지울 수 없는 에이전트가 4개 있었다.**
 
-![Agents that cannot be deleted](https://media.vlpt.us/images/5hseok/post/da02b053-70da-4b76-8edd-9e7c366e0b57/agent-undeletable.png)
+![지울 수 없는 에이전트들](https://media.vlpt.us/images/5hseok/post/0b826adc-6a1e-4a3a-8628-f5a2bbf80f7c/agent-undeletable.png)
 
-Doing that survey taught me something. **"Session" means a different physical thing to every agent.** For some it's a file, for some a directory, for some a database row, for some a file plus a separate index. On screen they're all just "conversation history" — but deleting one safely means knowing each storage layout.
+이걸 조사하면서 알게 된 게 하나 있다. **에이전트마다 "세션"이라는 개념의 물리적 실체가 다르다.** 어떤 건 파일 하나고, 어떤 건 디렉터리고, 어떤 건 DB 행이고, 어떤 건 파일 + 별도 색인의 조합이다. 겉으로 보면 다 "대화 기록"인데, 그걸 안전하게 지우려면 각각의 저장 구조를 알아야 했다.
 
-That led to a UI decision. For the four unsupported agents, the Delete item is **disabled rather than hidden**. When a menu item is simply absent, users read it as a bug. "You can't delete it here" has to be on screen.
+그리고 UI 결정을 하나 했다. 지원 못 하는 4개는 Delete 항목을 **숨기지 않고 비활성 상태로 보여준다.** 메뉴에 항목이 아예 없으면 사용자는 그걸 버그로 읽는다. "여기서는 못 지운다"는 게 화면에 보여야 한다.
 
-The tooltip, though, doesn't say **why**. Hardlink aliases and SQLite rows are Orca's problem, not something the reader should have to absorb. I left that reasoning in a code comment instead:
+다만 툴팁에는 **왜** 못 지우는지 적지 않았다. 하드링크 별칭이 어떻고 SQLite 행이 어떻고는 Orca가 감당할 문제지 사용자가 읽을 내용이 아니다. 이 판단은 나중에 코드 주석으로 남겼다.
 
 ```ts
 /**
@@ -101,27 +106,27 @@ The tooltip, though, doesn't say **why**. Hardlink aliases and SQLite rows are O
 
 ---
 
-# An agent leaves behind more than the conversation
+# 에이전트가 남기는 건 대화만이 아니다
 
-Digging into Claude sessions turned up something else. A single session doesn't leave one conversation file on disk.
+Claude 세션을 파고들다가 걸린 게 있었다. 세션 하나가 디스크에 남기는 게 대화 기록 파일 하나가 아니었다.
 
-![What a Claude session leaves on disk](https://media.vlpt.us/images/5hseok/post/7e3fbfac-af07-4d05-b272-f1c2cda5d0fe/claude-session-layout.png)
+![Claude 세션이 디스크에 남기는 것](https://media.vlpt.us/images/5hseok/post/906e898e-3f9a-48bb-b462-c18032671fec/claude-session-layout.png)
 
-The row already showed **how many subagents a session had**.
+세션 행에는 이미 **서브에이전트가 몇 개인지**가 표시되고 있었다.
 
-![A session row showing a 4 subagents badge](https://media.vlpt.us/images/5hseok/post/fd16ea69-cf46-4b49-b225-d90fad46fb03/ai-vault-row-subagents.png)
+![세션 행에 표시된 4 subagents 배지](https://media.vlpt.us/images/5hseok/post/fd16ea69-cf46-4b49-b225-d90fad46fb03/ai-vault-row-subagents.png)
 
-Expand the row and each of those subagents appears as its own conversation.
+행을 펼치면 그 서브에이전트들이 각각 하나의 대화로 나온다.
 
-![The SUBAGENTS list revealed by expanding a session](https://media.vlpt.us/images/5hseok/post/8ecd3d41-2209-4ff4-b12d-f08345dd8eee/ai-vault-subagents-expanded.png)
+![세션을 펼치면 나오는 SUBAGENTS 목록](https://media.vlpt.us/images/5hseok/post/8ecd3d41-2209-4ff4-b12d-f08345dd8eee/ai-vault-subagents-expanded.png)
 
-*(Both screenshots from [PR #7423](https://github.com/stablyai/orca/pull/7423) — another contributor's PR that added subagent display to AI Vault)*
+*(두 스크린샷 출처: [PR #7423](https://github.com/stablyai/orca/pull/7423) — AI Vault에 서브에이전트 표시를 추가한 다른 기여자의 PR)*
 
-**Subagent transcripts accumulate in a sibling directory.** Run a Task in Claude Code and that subagent's conversation is stored separately from its parent, inside a directory named after the parent transcript. Delete the conversation file alone and the row disappears from the list while a large share of the actual conversation stays on disk. The more subagents a session ran, the more is left behind.
+**서브에이전트 기록이 형제 디렉터리에 따로 쌓인다.** Claude Code에서 Task를 돌리면 그 서브에이전트의 대화가 부모 대화와 별개 파일로 저장되는데, 위치가 부모 트랜스크립트와 **같은 이름의 디렉터리 안**이다. 대화 기록 파일 하나만 지우면 목록에서 행은 사라지지만, 실제 대화 내용의 상당 부분은 디스크에 그대로 남는다. 서브에이전트를 많이 돌린 세션일수록 남는 양이 커진다.
 
-**`file-history` was the one thing not to delete.** The name makes it sound like session debris, but what's inside is **my own source code as it was before the agent edited it**. It's the rewind buffer. Delete it along with the session and the user hits "I deleted a conversation and my file rewind is gone."
+**`file-history`는 지우면 안 되는 것이었다.** 이름만 보면 세션 부산물 같은데, 그 안에 들어 있는 건 **에이전트가 수정하기 전의 내 소스 코드**다. 되돌리기용 버퍼다. 세션을 지웠다고 이걸 같이 지우면, 사용자는 "대화 기록 지웠는데 내 코드 되돌리기가 사라졌다"는 상황을 만나게 된다.
 
-That judgement went into the code as a comment:
+이 판단은 코드 주석에 그대로 남겼다.
 
 ```ts
 // `session-env/<uuid>/` is a companion — it holds that session's generated
@@ -131,33 +136,33 @@ That judgement went into the code as a comment:
 // copy that can restore them.
 ```
 
-> 💡 When you write code that deletes data an agent produced, the dangerous moment is passing over "what is this directory?" without checking. Agents don't only leave conversations — they leave copies of your files, environment variables, caches, indexes. Don't guess from the name; open it.
+> 💡 에이전트가 만든 데이터를 지우는 코드를 쓸 때 가장 위험한 순간은 "이 디렉터리는 뭐지?"를 넘어가는 때다. 에이전트는 대화만 남기는 게 아니라 내 파일의 사본, 환경변수, 캐시, 색인을 같이 남긴다. 이름으로 짐작하지 말고 열어봐야 한다.
 
-For the same reason, deletion goes through **`shell.trashItem`**, not `fs.rm`. It moves to the trash. Deleting data another app created has to be reversible. And a file that's already gone (`ENOENT`) is treated as success — if the user deleted it outside the app, the outcome should be the same.
+같은 이유로 삭제는 `fs.rm`이 아니라 **`shell.trashItem`**을 쓴다. 휴지통으로 보낸다. 다른 앱이 만든 데이터를 지우는 동작은 되돌릴 수 있어야 한다. 그리고 파일이 이미 없는 경우(`ENOENT`)는 실패가 아니라 성공으로 처리한다. 사용자가 밖에서 먼저 지웠어도 결과는 같아야 하니까.
 
 ---
 
-# Never trust a path from the renderer
+# 렌더러가 준 경로를 믿지 않는다
 
-This is the part I spent the longest on.
+이 PR에서 가장 오래 붙잡은 부분이다.
 
-An Electron app splits the **renderer process** that draws the screen from the **main process** that touches the filesystem, and the two talk over IPC. A delete request starts in the renderer.
+Electron 앱은 화면을 그리는 **렌더러 프로세스**와 파일시스템에 접근하는 **메인 프로세스**가 나뉘어 있고, 둘은 IPC로 통신한다. 삭제 요청은 렌더러에서 출발한다.
 
-![Electron process boundary](https://media.vlpt.us/images/5hseok/post/f6c1a200-9d1d-458b-9df3-b8acd672a048/electron-process-boundary.png)
+![Electron 프로세스 경계](https://media.vlpt.us/images/5hseok/post/3222c583-0444-4265-9ed2-04d7f6a91866/electron-process-boundary.png)
 
-Build it naively and this is what you get: the renderer sends `{ agent, filePath }`, and main deletes that `filePath`. **That IPC channel is now arbitrary file deletion wearing the name of a session delete.** If the renderer is compromised, if the scanner surfaces a strange path, if a symlink is in the way — it runs.
+여기서 순진하게 만들면 이렇게 된다. 렌더러가 `{ agent, filePath }`를 보내고, 메인이 그 `filePath`를 지운다. **그러면 이 IPC 채널은 세션 삭제라는 이름을 달고 있는 임의 파일 삭제 기능이 된다.** 렌더러 코드가 뚫리거나, 스캐너가 이상한 경로를 물고 오거나, 심볼릭 링크가 끼어 있으면 그대로 실행된다.
 
-So the main process treats what the renderer sends as **a hint about the input, and decides from scratch whether it has the right to delete it**.
+그래서 메인 프로세스는 렌더러가 보낸 값을 **입력 힌트로만 쓰고, 지울 자격이 있는지는 처음부터 다시 판단한다.**
 
-![Delete path validation pipeline](https://media.vlpt.us/images/5hseok/post/7fd48f7e-00b8-4c23-bf68-f59ede309046/delete-validation-pipeline.png)
+![삭제 경로 검증 파이프라인](https://media.vlpt.us/images/5hseok/post/af9022b0-84a0-41cc-9ddf-964f5f22a09c/delete-validation-pipeline.png)
 
-A few of these I learned by getting burned.
+몇 가지는 직접 데어보고 알았다.
 
-**Why `resolve()` comes first.** Whether a path sits inside an allowed root is a string comparison. But `<root>/../../etc/x.jsonl` starts with `<root>` as far as a string is concerned. The comparison has to happen after `resolve()` collapses the `..`.
+**`resolve()`를 먼저 부르는 이유.** 경로가 허용된 루트 안에 있는지는 문자열 비교로 검사한다. 그런데 `<root>/../../etc/x.jsonl`은 문자열로만 보면 `<root>`로 시작한다. `resolve()`가 `..`을 접고 난 뒤에 비교해야 한다.
 
-**Why `realpath` matters too.** Even when the path string is inside a root, an intermediate directory can be a symlink pointing the real file somewhere else. So right before removing anything, it checks on disk once more — `lstat` for whether it's a file or a directory, `realpath` for whether the real location is still inside the roots.
+**`realpath`까지 봐야 하는 이유.** 경로 문자열이 루트 안이어도, 중간 디렉터리가 심볼릭 링크면 실제 파일은 밖에 있을 수 있다. 그래서 지우기 직전에 디스크에서 한 번 더 확인한다 — `lstat`으로 파일인지 디렉터리인지 보고, `realpath`로 실제 위치가 여전히 루트 안인지 본다.
 
-**Agents let you move their storage with an environment variable.** Several agents allow overriding where sessions are stored, and that opened a hole. `OMP_CODING_AGENT_DIR='/'` normalizes to an empty string, and resolving an empty string gives you **the process's current working directory**. One empty root silently allowlists the entire cwd.
+**에이전트가 환경변수로 저장 위치를 바꿀 수 있다는 점.** 여러 에이전트가 세션 저장 경로를 환경변수로 덮어쓸 수 있게 해뒀는데, 여기서 구멍이 하나 나왔다. `OMP_CODING_AGENT_DIR='/'`를 정규화하면 빈 문자열이 되고, 그걸 `resolve()`하면 **프로세스의 현재 작업 디렉터리**가 된다. 빈 루트 하나가 cwd 전체를 조용히 허용 목록에 올린다.
 
 ```ts
 const roots = source
@@ -168,19 +173,19 @@ const roots = source
   .map((rootDir) => resolve(rootDir))
 ```
 
-**The blast radius of a directory delete.** Since some agents are deleted directory-wise, a file sitting directly in the sessions root becoming a directory-delete target would **wipe every session that agent has**. A filename whose extension-stripped stem is empty can likewise resolve to the project root. Both are rejected explicitly, each with its own test.
+**디렉터리 삭제의 폭발 반경.** 디렉터리를 통째로 지우는 에이전트가 있으니, "세션 루트 바로 아래에 있는 파일"이 디렉터리 삭제 대상으로 잡히면 **그 에이전트의 모든 세션이 한 번에 날아간다.** 파일명에서 확장자를 뗀 값이 비어버리는 경우도 마찬가지로 프로젝트 루트를 가리킬 수 있다. 둘 다 명시적으로 거부하고, 각각 테스트를 붙였다.
 
-The validation logic is a **pure function** that never touches the filesystem. It only judges paths, never throws, and returns malformed input as a rejection like any other. That's what lets the tests throw every hostile path at it without a real home directory.
+검증 로직은 파일시스템을 건드리지 않는 **순수 함수**로 분리했다. 경로 판단만 하고, 예외를 던지지 않고, 잘못된 입력은 다른 거부 사유와 똑같이 거부값으로 돌려준다. 이래야 실제 홈 디렉터리 없이 온갖 악성 경로를 테스트에 넣어볼 수 있다.
 
 ---
 
-# What about agents running on a remote host
+# 원격에서 돌고 있는 에이전트는 어떻게 하나
 
-Orca can run agents on a remote host over SSH. Then that session's history lives **on the remote machine's disk, not mine**. Electron's `shell.trashItem` only acts on this computer, so remote sessions can't be deleted.
+Orca는 SSH로 붙은 원격 호스트에서도 에이전트를 돌릴 수 있다. 그러면 그 세션 기록은 **내 컴퓨터가 아니라 원격 호스트의 디스크**에 있다. Electron의 `shell.trashItem`은 이 컴퓨터에서만 동작하니, 원격 세션은 지울 수 없다.
 
-WSL had a related problem. Deleting a WSL agent session from Windows means a UNC path, and a UNC path has no recycle bin. That had to be routed through the existing WSL-specific delete path.
+WSL도 비슷한 문제가 있었다. Windows에서 WSL 안의 에이전트 세션을 지우려고 하면, WSL의 UNC 경로에는 휴지통이 없다. 이건 기존에 있던 WSL 전용 삭제 경로로 태워야 했다.
 
-And here's a design decision I enjoyed. **The renderer and main agree on *whether* something is deletable, but deliberately check in a different order.**
+그리고 여기서 재미있는 설계 결정을 하나 했다. **렌더러와 메인이 "지울 수 있나"에는 합의하되, 검사 순서는 일부러 다르게 뒀다.**
 
 ```ts
 /**
@@ -190,65 +195,66 @@ And here's a design decision I enjoyed. **The renderer and main agree on *whethe
  */
 ```
 
-Main's job is security, so it asks "is this a supported agent?" first. The renderer's job is telling the user why, so it asks "is this session on this machine?" first. That way a Codex session running over SSH reads as *"Only sessions on this device can be deleted"* rather than *"Codex sessions can't be deleted from Orca."* Both are true, but only one tells the user what to do next.
+메인은 보안이 목적이니 "지원하는 에이전트인가"를 먼저 본다. 렌더러는 사용자에게 이유를 말해주는 게 목적이니 "이 컴퓨터의 세션인가"를 먼저 본다. 그래야 SSH로 돌린 Codex 세션이 *"Codex 세션은 지울 수 없습니다"*가 아니라 *"이 기기의 세션만 지울 수 있습니다"*로 읽힌다. 둘 다 맞는 말이지만, 사용자가 다음에 뭘 해야 할지 알려주는 건 후자다.
 
 ---
 
-# The order of removal has a reason too
+# 지우는 순서에도 이유가 있다
 
-When a session is made of several files, **which one you delete first** changes what happens on failure.
+세션 하나가 파일 여러 개로 이뤄져 있으면, **어떤 걸 먼저 지우느냐**가 실패했을 때의 결과를 바꾼다.
 
-![Order of removal](https://media.vlpt.us/images/5hseok/post/863d5c9d-7710-4e2e-894d-455031c0594c/delete-sequence.png)
+![삭제 순서](https://media.vlpt.us/images/5hseok/post/9a8f99ca-df2f-4963-b2d9-22feb57c7607/delete-sequence.png)
 
-The rule: **companions first, the conversation that puts the row on screen last.**
+원칙은 **부속 파일 먼저, 목록에 행을 띄우는 대화 기록을 마지막에**.
 
-What creates the row is the conversation file. Delete it first and then fail on the subagents directory, and **the row is gone while the data stays on disk**. The user has no way to know it's there and no way to retry.
+목록의 행을 만들어내는 건 대화 기록 파일이다. 그걸 먼저 지우고 서브에이전트 디렉터리에서 실패하면, **행은 사라졌는데 데이터는 디스크에 남는다.** 사용자는 그게 남아 있다는 걸 알 방법도, 다시 시도할 방법도 없다.
 
-Delete the companions first and a mid-way failure leaves the row. It looks like "the delete didn't work," but the user can press it again and the rest gets cleaned up. **If it's going to fail, it should fail in a state the user can retry from.**
+반대로 부속 파일부터 지우면 중간에 실패해도 행이 남는다. 보기엔 "삭제가 안 됐다"지만, 사용자는 다시 누를 수 있고 남은 것도 정리된다. **어차피 실패한다면, 사용자가 재시도할 수 있는 상태로 실패하는 쪽이 낫다.**
 
-Caching had the same shape of problem. AI Vault caches scan results, and a scan that started just before the delete but finishes after it **writes the deleted row back**. So the cache carries a generation counter, and results older than the invalidation are dropped.
-
----
-
-# Review: bots first, then a human
-
-In this repo, two review bots (CodeRabbit, Greptile) get to a PR first, and a human maintainer follows.
-
-Bot reviews come with a lot of findings. At first I assumed I had to fix all of them; in practice, **the work is separating the real ones from the rest and showing your reasoning**. Two I did fix:
-
-1. **An unhandled IPC rejection.** The main handler doesn't throw on failure — it resolves a `failed`/`rejected` result. But a rejection at the transport or serialization layer can still escape, and the caller was firing it with `void`. That meant no failure toast and an unhandled rejection.
-2. **Dismissing the dialog mid-delete.** While a delete was in flight, Escape, an outside click, or the X button could still close the confirm dialog.
-
-For both, I **confirmed a failing test before fixing** and left it as a regression test. When replying to the bot, I wrote what situation the bug shows up in and which commit fixed it, rather than "fixed."
-
-Looking back, a lot of my time went into making the PR easy to review. The description carried a table of supported and unsupported agents, the reasoning behind design decisions, a security review, and — separately — **what I had not verified myself**:
-
-> - **macOS:** exercised end to end by hand against an isolated disposable HOME
-> - **Linux:** the new e2e spec runs on CI and proves the real on-disk removal
-> - **Windows / WSL:** unit tests and code review only, not a live runtime — reviewers may want to give this path a closer look
-
-That last line was the one I hesitated over. There's a pull toward writing "verified everywhere." And a WSL bug did turn up in review. **Saying plainly what I hadn't tested is exactly what drew review to that path.**
-
-The maintainer left three rounds of comments and then approved. I opened the issue on July 22; it merged on August 7.
+캐시도 같은 문제였다. AI Vault는 스캔 결과를 캐시하는데, 삭제 직전에 시작된 스캔이 삭제 후에 끝나면 **지운 행을 다시 써넣는다.** 그래서 캐시에 세대 카운터를 두고, 무효화 시점보다 오래된 스캔 결과는 버리게 했다.
 
 ---
 
-# What's left
+# 리뷰 대응 — 봇 리뷰와 사람 리뷰
 
-Technically it all converges on one thing. **A value that crossed a boundary gets judged again.** The path from the renderer, the root the scanner surfaced, the storage location overridden by an environment variable — I don't know what any of them passed through on the way here. In code that deletes someone's data, that attitude is worth a lot.
+이 레포는 PR을 올리면 리뷰 봇 두 개(CodeRabbit, Greptile)가 먼저 붙고, 그다음 사람 메인테이너가 본다.
 
-There's an agent-shaped lesson too. **Agents leave more on your machine than you'd think.** Not just conversations, but subagent conversations, earlier versions of your files, generated environment variables, separate indexes. And the layout differs for every agent. Almost nothing exists to clean that up today, which feels like a gap that will matter more as running several agents becomes normal.
+봇 리뷰는 지적 개수가 많다. 처음엔 전부 고쳐야 하나 싶었는데, 해보니 **진짜인 것과 아닌 것을 구분해서 근거를 대는 게 대응의 본질**이었다. 실제로 고친 두 개는 이랬다.
 
-The rest of my PRs came from the same place. Recovering a temporary worktree an agent created ([#11275](https://github.com/stablyai/orca/pull/11275)), formatting drifting between an agent's edits and mine ([#13757](https://github.com/stablyai/orca/pull/13757)), running out of tabs and sidebar room with several agents open ([#10076](https://github.com/stablyai/orca/pull/10076), [#10152](https://github.com/stablyai/orca/pull/10152)). None of these existed when it was just me and one editor.
+1. **처리되지 않은 IPC 거부.** 메인 핸들러는 실패를 예외로 던지지 않고 `failed`/`rejected` 결과값으로 돌려준다. 그런데 전송·직렬화 단계에서 거부되는 건 여전히 예외로 새어나올 수 있고, 호출하는 쪽은 `void`로 던져놓고 있었다. 그러면 실패 토스트도 안 뜨고 unhandled rejection만 남는다.
+2. **삭제 도중 다이얼로그 닫기.** 삭제가 진행 중인데 Escape·바깥 클릭·X 버튼으로 확인 다이얼로그가 닫힐 수 있었다.
 
-One of them, #11275, was closed. While I was building it, a maintainer solved the same problem in a different PR.
+둘 다 **고치기 전에 실패하는 테스트를 먼저 확인하고** 회귀 테스트로 남겼다. 봇에게 답을 달 때도 "고쳤습니다"가 아니라 어떤 상황에서 문제가 되는지, 무슨 커밋에서 어떻게 고쳤는지를 적었다.
+
+돌아보면 리뷰가 붙기 좋게 만드는 데 쓴 시간이 꽤 컸다. PR 본문에 지원/미지원 에이전트 표, 설계 판단 근거, 보안 검토, 그리고 **직접 확인하지 못한 부분**을 따로 적었다.
+
+> - **macOS:** 격리된 일회용 HOME으로 수동 전체 검증
+> - **Linux:** 새로 추가한 e2e 스펙이 CI에서 실제 파일 삭제까지 확인
+> - **Windows / WSL:** 유닛 테스트와 코드 리뷰만. 실제 런타임 검증은 못 했음 — 리뷰어가 이 경로를 더 봐주면 좋겠음
+
+마지막 줄을 쓰는 게 제일 망설여졌다. "다 확인했습니다"라고 쓰고 싶은 유혹이 있었는데, 실제로 WSL 관련 버그가 리뷰 중에 하나 나왔다. **못 해본 걸 못 해봤다고 적어두니 그 부분에 리뷰가 붙었다.**
+
+사람 메인테이너는 코멘트 세 번을 거쳐 Approve를 눌렀다. 이슈를 올린 게 7월 22일, 머지가 8월 7일이었다.
+
+---
+
+# 남은 것
+
+기술적으로 배운 건 하나로 모인다. **경계를 넘어온 값은 다시 판단한다.** 렌더러가 준 경로든, 스캐너가 물고 온 루트든, 환경변수로 덮어쓴 저장 위치든, 그 값이 여기까지 오는 동안 뭘 통과했는지 나는 모른다. 남의 데이터를 지우는 코드에서는 그 태도가 특히 비싸게 먹힌다.
+
+에이전트에 대해 알게 된 것도 있다. **에이전트는 생각보다 많은 걸 로컬에 남긴다.** 대화 기록만이 아니라 서브에이전트의 대화, 내 파일의 이전 버전, 생성된 환경변수, 별도 색인까지. 그리고 그 구조는 에이전트마다 전부 다르다. 지금은 그걸 정리해주는 도구가 거의 없는데, 에이전트를 여러 개 쓰는 사람이 늘어나면 결국 필요해질 자리라고 본다.
+
+나머지 PR들도 결국 같은 자리에서 나왔다. 에이전트가 만든 임시 워크트리를 개별로 되찾는 것([#11275](https://github.com/stablyai/orca/pull/11275)), 에이전트와 내가 번갈아 편집한 파일의 포맷이 어긋나는 것([#13757](https://github.com/stablyai/orca/pull/13757)), 에이전트를 여러 개 띄우다 보니 탭과 사이드바가 모자란 것([#10076](https://github.com/stablyai/orca/pull/10076), [#10152](https://github.com/stablyai/orca/pull/10152)). 혼자 에디터 하나 켜놓고 쓸 때는 안 생기던 문제들이다.
+
+그중 #11275는 닫혔다. 다 만들어놓은 사이에 메인테이너가 같은 문제를 다른 PR로 해결했기 때문이다.
 
 > Thanks for this work — per-worktree recovery from the visibility dialog landed in #13652, so this PR is now superseded.
 
-1,827 lines summed up in one sentence. It stung, but the cause was clear. **#10249, which I built after filing an issue and getting it assigned, got merged; the one I built off an issue without coordinating got superseded.** Hold a large change alone for long enough in an active repo and things move underneath you.
+1827줄이 이 한 줄로 정리됐다. 아쉬웠지만 원인은 분명했다. **이슈를 올리고 assignee를 받은 뒤에 만든 #10249는 머지됐고, 이슈만 올려두고 조율 없이 만든 건 대체됐다.** 활발한 레포에서 큰 변경을 혼자 오래 붙들고 있으면 그 사이에 상황이 바뀐다.
 
-So the lesson wasn't really about coding. File the issue first, say how you plan to build it, get it assigned, write down what you couldn't verify. That's closer to **making it possible for a reviewer to judge** — and in someone else's repo, that mattered as much as the code.
+그래서 남은 교훈은 코드 실력 쪽이 아니었다. 이슈를 먼저 올리고, 어떻게 만들 건지 적고, assignee를 받고, 못 해본 검증을 못 해봤다고 적는 것. **리뷰어가 판단할 수 있게 만드는 일**에 가깝고, 남의 레포에서는 그게 코드만큼 중요했다.
 
 ---
 
-*P.S. These days I have git line blame wired into the editor. After building it I went looking through the issues and PRs and found it already well covered, so I'm just quietly using my own. Next time I'll search before I build.*
+*추신. 요즘은 에디터에 git line blame을 붙여서 쓰고 있다. 만들어놓고 이슈랑 PR을 찾아보니 이미 잘 구현되어 있는 것 같아서, 그냥 혼자 몰래 쓰는 중이다. 다음 건 올리기 전에 먼저 찾아보려고 한다.*
+
