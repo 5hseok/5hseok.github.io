@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1420">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CertLoop">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>CertLoop · 자격증 학습</title>
+<link rel="stylesheet" href="style.css?v=20261029a">
+</head>
+<body>
+<section id="setup" class="setup-screen" hidden>
+  <div class="setup-card">
+    <div class="brand">Cert<span>Loop</span></div>
+    <h1>내 문제집으로 공부하기</h1>
+    <p>이 주소에는 학습 화면만 공개되어 있습니다. 문제·정답·해설은 인터넷에 올리지 않았습니다.</p>
+    <p>아이폰에 저장한 <b>CertLoop 문제집 파일</b>을 한 번 선택해 주세요. 파일 내용은 이 기기 안에 저장됩니다.</p>
+    <label class="btn btn-primary import-label" for="contentImport">문제집 파일 선택</label>
+    <input id="contentImport" type="file" accept="application/json,.json" hidden>
+    <p id="setupError" role="status"></p>
+  </div>
+</section>
+<header hidden>
+  <div class="hbar">
+    <div class="brand" onclick="App.goHome()">Cert<span>Loop</span></div>
+    <div class="search">
+      <input id="searchInput" type="search" placeholder="개념·서비스 검색 (예: CodeDeploy 훅, SCP, Aurora Global) …" autocomplete="off">
+    </div>
+    <button class="iconbtn" id="dockBtn" title="메모·개념 패널 (오른쪽)">📝</button>
+    <button class="iconbtn" id="themeBtn" title="테마 전환">🌙</button>
+    <button class="iconbtn" onclick="App.exportProgress()" title="학습 기록 전체 백업" aria-label="기록 백업">기록 백업</button>
+    <label class="iconbtn import-label" for="importProgress">기록 가져오기</label>
+    <input id="importProgress" type="file" accept="application/json,.json" hidden onchange="App.importProgress(this)">
+    <label class="iconbtn import-label" for="contentUpdate">문제집 업데이트</label>
+    <input id="contentUpdate" type="file" accept="application/json,.json" hidden>
+  </div>
+</header>
+
+<main hidden>
+  <!-- 홈 -->
+  <section id="view-home" class="view active">
+    <div class="hero">
+      <h1>CertLoop · 문제집과 개념집</h1>
+      <p id="homeStat">불러오는 중…</p>
+      <p id="progressSummary" class="progress-summary"></p>
+    </div>
+
+    <div class="section-title">빠른 시작</div>
+    <div class="study-start">
+      <label for="examSelect">오늘 공부할 자격증</label>
+      <select id="examSelect" onchange="App.chooseExam(this.value)"><option value="SAP-C02">SAP-C02</option><option value="SAA-C03">SAA-C03</option><option value="DOP-C02">DOP-C02</option><option value="AIP-C01">AIP-C01</option></select>
+      <button class="btn btn-primary" onclick="App.startToday()">오늘의 학습 시작</button>
+    </div>
+    <div class="row">
+      <div class="big-btn" onclick="App.startRandom(null,20)">
+        <div class="emoji">🎲</div>
+        <div><b>전체 랜덤 20문제</b><small>모든 카테고리에서 무작위</small></div>
+      </div>
+      <div class="big-btn" onclick="App.startRandom('SAP-C02',20)">
+        <div class="emoji">🏛️</div>
+        <div><b>SAP 랜덤 20문제</b><small>Solutions Architect Pro</small></div>
+      </div>
+      <div class="big-btn" onclick="App.startRandom('SAA-C03',20)">
+        <div class="emoji">☁️</div>
+        <div><b>SAA 랜덤 20문제</b><small>Solutions Architect Associate</small></div>
+      </div>
+      <div class="big-btn" onclick="App.startRandom('DOP-C02',20)">
+        <div class="emoji">⚙️</div>
+        <div><b>DOP 랜덤 20문제</b><small>DevOps Engineer Pro</small></div>
+      </div>
+      <div class="big-btn" onclick="App.startRandom('AIP-C01',20)">
+        <div class="emoji">🤖</div>
+        <div><b>AIP 랜덤 20문제</b><small>Generative AI Developer Pro</small></div>
+      </div>
+    </div>
+
+    <div class="section-title">🔁 오답 다시 풀기 (자격증별)</div>
+    <div class="row" id="wrongRow"></div>
+
+    <div class="section-title">카테고리별 문제 풀기</div>
+    <div class="grid" id="catGrid"></div>
+
+    <div class="section-title">개념집 통독 (문제 풀기 전 읽으세요)</div>
+    <div class="grid" id="conceptGrid"></div>
+  </section>
+
+  <!-- 퀴즈 -->
+  <section id="view-quiz" class="view">
+    <div class="backbtn" onclick="App.goHome()">← 홈으로</div>
+    <div class="quizbar">
+      <div class="prog"><div class="track"><i id="progBar"></i></div></div>
+      <span class="pill" id="progText">0 / 0</span>
+      <span class="pill ok" id="scoreText">정답 0</span>
+      <span class="pill" id="timeText" title="문제 세트를 시작한 뒤 경과 시간">⏱ 0:00</span>
+      <button class="iconbtn" onclick="App.toggleConfig()" id="quizScope" title="범위">범위</button>
+    </div>
+    <div id="quizContent"></div>
+  </section>
+
+  <!-- 개념 -->
+  <section id="view-concept" class="view">
+    <div class="backbtn" onclick="App.goHome()">← 홈으로</div>
+    <p id="todayNotice" class="today-notice" hidden></p>
+    <div id="conceptToc" class="concept-toc"></div>
+    <div class="concept-body md" id="conceptContent"></div>
+  </section>
+
+  <!-- 검색 -->
+  <section id="view-search" class="view">
+    <div class="backbtn" onclick="App.goHome()">← 홈으로</div>
+    <h2 id="searchTitle" style="margin-top:0"></h2>
+    <div id="searchResults"></div>
+  </section>
+</main>
+
+<!-- 우측 도크: 메모 + 개념 뷰어 (메인 화면을 덮지 않고 나란히) -->
+<aside id="dock" class="dock" aria-hidden="true">
+  <div class="dock-resizer" id="dockResizer" title="너비 조절"></div>
+  <div class="dock-head">
+    <div class="dock-tabs">
+      <button class="dock-tab active" data-tab="notes" onclick="App.dockTab('notes')">📝 메모</button>
+      <button class="dock-tab" data-tab="concept" onclick="App.dockTab('concept')">📖 개념</button>
+    </div>
+    <button class="iconbtn" onclick="App.toggleDock(false)" title="닫기">✕</button>
+  </div>
+  <div class="dock-body">
+    <div id="dockNotes" class="dock-pane active">
+      <textarea id="notesArea" placeholder="여기에 메모하세요. 자동 저장됩니다. (문제를 풀며 헷갈린 개념·오답 이유·암기할 것 등)"></textarea>
+    </div>
+    <div id="dockConcept" class="dock-pane">
+      <div id="dockConceptContent" class="md">
+        <div class="dock-empty">상단 검색창에 개념·서비스를 입력하거나, 해설 속 <span class="wikilink" style="cursor:default">[[개념집]]</span> 링크를 누르면 여기에 관련 개념이 열립니다.</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<script src="lib/marked.min.js"></script>
+<script src="lib/mermaid.min.js"></script>
+<script src="progress-store.js?v=20261029a"></script>
+<script src="bootstrap.js?v=20261029b"></script>
+</body>
+</html>
