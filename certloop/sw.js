@@ -1,5 +1,5 @@
-const CACHE = 'certloop-offline-20261029e';
-const CORE = ['./', './index.html', './style.css', './app.js', './bootstrap.js', './progress-store.js', './lib/marked.min.js', './lib/mermaid.min.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'certloop-offline-20261029f';
+const CORE = ['./', './index.html', './style.css', './native.css', './app.js', './bootstrap.js', './progress-store.js', './lib/marked.min.js', './lib/mermaid.min.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
 });

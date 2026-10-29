@@ -172,6 +172,15 @@
       await save(); syncLegacy();
     },
     async setWebNotes(text) { state.webNotes = text; await save(); },
+    async setDailyGoal(value) { state.preferences.dailyGoal = Math.min(100, Math.max(1, Number(value) || 10)); await save(); },
+    async toggleBookmark(id) {
+      const bookmarks = new Set(state.bookmarks || []);
+      if (bookmarks.has(id)) bookmarks.delete(id); else bookmarks.add(id);
+      state.bookmarks = [...bookmarks];
+      await save();
+      return bookmarks.has(id);
+    },
+    async setQuestionNote(id, text) { state.notes[id] = text; await save(); },
     async chooseExam(exam) {
       const previous = state.selectedExam || 'SAP-C02';
       if (previous === exam) return;
@@ -191,11 +200,36 @@
     async markDailyRead(cp) {
       if (state.dailyLesson?.checkpointID === checkpointId(cp)) { state.dailyLesson.readAt = now(); await save(); }
     },
+    async beginSession(title, questionIDs, checkpointID = null) {
+      state.session = { id: crypto.randomUUID(), title, questionIDs, index: 0, selected: [], submitted: false, correct: 0, startedQuestion: now(), checkpointID };
+      await save();
+    },
+    async selectInSession(selected) { if (state.session && !state.session.submitted) { state.session.selected = selected; await save(); } },
+    async submitInSession(correct) { if (state.session && !state.session.submitted) { state.session.submitted = true; if (correct) state.session.correct++; await save(); } },
+    async advanceSession() { if (state.session?.submitted) { state.session.index++; state.session.selected = []; state.session.submitted = false; state.session.startedQuestion = now(); await save(); } },
+    webCheckpointKey,
     exportJSON() { return JSON.stringify(state, null, 2); },
     summary(exam) {
       const list = state.attempts.filter(a => a.questionID.startsWith(exam + '-'));
       const correct = list.filter(a => a.correct).length;
       return { attempts: list.length, rate: list.length ? Math.round(correct * 100 / list.length) : null, wrong: Object.entries(state.reviews).filter(([id, r]) => id.startsWith(exam + '-') && !r.lastCorrect).length };
+    },
+    metrics(exam, questions) {
+      const attempts = state.attempts.filter(item => item.questionID.startsWith(exam + '-'));
+      const today = new Date().toDateString();
+      const dayOf = item => new Date((item.date + APPLE_EPOCH) * 1000).toDateString();
+      const todayCount = attempts.filter(item => dayOf(item) === today).length;
+      const days = new Set(attempts.map(dayOf));
+      const cursor = new Date(); cursor.setHours(0, 0, 0, 0);
+      if (!days.has(cursor.toDateString())) cursor.setDate(cursor.getDate() - 1);
+      let streak = 0;
+      while (days.has(cursor.toDateString())) { streak++; cursor.setDate(cursor.getDate() - 1); }
+      const questionIds = new Set(questions.map(q => q.id));
+      const dueIds = Object.entries(state.reviews || {}).filter(([id, review]) => questionIds.has(id) && review.due <= now()).map(([id]) => id);
+      const wrongIds = Object.entries(state.reviews || {}).filter(([id, review]) => questionIds.has(id) && review.lastCorrect === false).map(([id]) => id);
+      const missedIds = new Set(attempts.filter(item => !item.correct).map(item => item.questionID));
+      const recovered = [...missedIds].filter(id => state.reviews[id]?.lastCorrect === true).length;
+      return { attempts, todayCount, dailyGoal: state.preferences.dailyGoal || 10, streak, coverage: new Set(attempts.map(item => item.questionID)).size, dueIds, wrongIds, recovered };
     },
   };
   root.ProgressStore = api;
