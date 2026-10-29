@@ -101,6 +101,16 @@ body.dock-open main{margin-right:auto}
 .coach-icon{font-size:48px;color:var(--accent)}
 .coach-message h2{font-size:19px}
 .coach-message p{font-size:14px;color:var(--muted)}
+.coach-top{display:flex;justify-content:space-between;gap:12px;margin:0 -20px;padding:14px 20px;background:var(--card);font-size:12px;color:var(--muted)}
+.coach-top b{color:var(--accent)}
+.coach-intro{padding:26px 0 110px}
+.coach-intro h2{font-size:24px;line-height:1.25;margin:10px 0}
+.coach-intro p{font-size:14px;color:var(--muted);line-height:1.55}
+.coach-intro .coach-icon{font-size:35px}
+.coach-suggestion{display:block;border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-top:10px;color:var(--muted);font-size:14px}
+.coach-composer{position:fixed;bottom:calc(93px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(520px,100%);padding:12px 20px;background:var(--bg);border-top:1px solid var(--border)}
+.coach-composer div{background:var(--card);border-radius:14px;padding:12px;color:var(--muted);font-size:14px}
+.coach-composer small{display:block;color:var(--muted);font-size:11px;margin-top:5px}
 #view-quiz,#view-concept{padding-top:7px}
 #view-quiz .backbtn,#view-concept .backbtn{display:none}
 .quizbar{display:block;padding:0 2px;margin:0 0 4px}

@@ -84,7 +84,7 @@ function runMermaid(container) {
 }
 
 /* ---------- 뷰 전환 ---------- */
-const TAB_TITLES = { home: 'CertLoop', library: '', coach: '', growth: '', settings: '' };
+const TAB_TITLES = { home: 'CertLoop', library: '', coach: 'AI 코치', growth: '', settings: '' };
 let lastTab = 'home';
 function show(view) {
   $$('.view').forEach(v => v.classList.remove('active'));
@@ -96,6 +96,7 @@ function show(view) {
   $('#examSelect').hidden = view !== 'home';
   $('#tabBar').hidden = !isTab;
   $$('#tabBar .tab').forEach(button => button.classList.toggle('active', button.dataset.view === view));
+  if (view === 'coach') $('#coachExam').textContent = ProgressStore.value.selectedExam || 'SAP-C02';
   window.scrollTo(0, 0);
 }
 

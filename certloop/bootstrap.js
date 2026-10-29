@@ -63,7 +63,7 @@
     document.querySelector('main').hidden = false;
     document.querySelector('#tabBar').hidden = false;
     const script = document.createElement('script');
-    script.src = 'app.js?v=20261029g';
+    script.src = 'app.js?v=20261029h';
     script.onerror = () => { document.querySelector('#setupError').textContent = '학습 화면을 불러오지 못했습니다. 다시 열어 주세요.'; };
     document.body.appendChild(script);
   }
