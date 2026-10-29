@@ -56,7 +56,7 @@
     return sorted.reduce((best, cp) => (scores[checkpointId(cp)] || 0) * (best.nums?.length || 1) < (scores[checkpointId(best)] || 0) * (cp.nums?.length || 1) ? cp : best);
   }
   function webCheckpointKey(id) {
-    const m = id.match(/^(?:(SAP-C02|SAA-C03):)?(.+):(\d+)$/);
+    const m = id.match(/^(?:([A-Z]{3}-C\d+):)?(.+):(\d+)$/);
     return m ? `${m[1] || 'SAP-C02'}|${m[2]}|${m[3]}` : null;
   }
   function validate(candidate, questionIds, checkpointIds) {
