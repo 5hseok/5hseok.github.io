@@ -669,7 +669,7 @@ async function init() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleDock(false); });
 
   renderHome(); renderLibrary(); renderGrowth(); renderSettings();
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('./sw.js').catch(console.warn);
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => registration.update()).catch(console.warn);
 }
 if (document.readyState !== 'loading') init();
 else document.addEventListener('DOMContentLoaded', init);
