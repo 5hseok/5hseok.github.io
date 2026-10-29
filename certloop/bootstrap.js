@@ -37,7 +37,26 @@
       throw Error('CertLoop 문제집 파일 형식이 올바르지 않습니다.');
     }
   }
+  function hydrateReadingSegments(data) {
+    const checkpointByKey = new Map(data.checkpoints.filter(cp => cp.exam === 'SAP-C02').map(cp => [`${cp.category}:${cp.idx}`, cp]));
+    const marker = /<!-- CHECKPOINT:AUTO -->[\s\S]*?<!-- \/CHECKPOINT:AUTO -->/g;
+    for (const concept of data.concepts) {
+      if (concept.exam !== 'SAP-C02') continue;
+      let previousEnd = 0;
+      for (const block of concept.markdown.matchAll(marker)) {
+        const number = block[0].match(/체크포인트 (\d+)\//);
+        const checkpoint = number && checkpointByKey.get(`${concept.category}:${number[1]}`);
+        if (checkpoint && !checkpoint.readingMarkdown) {
+          let segment = concept.markdown.slice(previousEnd, block.index);
+          if (checkpoint.supplement) segment = segment.split('<!-- SAP-SUPPLEMENT:BEGIN -->').pop();
+          checkpoint.readingMarkdown = segment.trim();
+        }
+        previousEnd = block.index + block[0].length;
+      }
+    }
+  }
   function launch(pack) {
+    hydrateReadingSegments(pack.data);
     window.QUIZ_DATA = pack.data;
     document.querySelector('#setup').hidden = true;
     document.querySelector('header').hidden = false;
@@ -78,7 +97,7 @@
       document.querySelector('#setupError').textContent = '기기 저장소를 열 수 없습니다: ' + error.message;
     }
   }
-  if (typeof module !== 'undefined') { module.exports = { validate }; return; }
+  if (typeof module !== 'undefined') { module.exports = { validate, hydrateReadingSegments }; return; }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
