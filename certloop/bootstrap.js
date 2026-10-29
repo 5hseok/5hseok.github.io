@@ -43,7 +43,7 @@
     document.querySelector('header').hidden = false;
     document.querySelector('main').hidden = false;
     const script = document.createElement('script');
-    script.src = 'app.js?v=20261029b';
+    script.src = 'app.js?v=20261029d';
     script.onerror = () => { document.querySelector('#setupError').textContent = '학습 화면을 불러오지 못했습니다. 다시 열어 주세요.'; };
     document.body.appendChild(script);
   }
@@ -78,6 +78,7 @@
       document.querySelector('#setupError').textContent = '기기 저장소를 열 수 없습니다: ' + error.message;
     }
   }
+  if (typeof module !== 'undefined') { module.exports = { validate }; return; }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();

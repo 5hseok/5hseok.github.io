@@ -271,6 +271,8 @@ body.dock-open main{margin-right:var(--dock-w,440px)}
 .md img{max-width:100%;height:auto;display:block;margin:12px 0;background:white;border-radius:8px;padding:8px}
 .badge.saa{background:#164e63;color:#a5f3fc}
 .progress-summary{margin-top:8px!important;color:var(--accent2)!important;font-weight:650}
+.today-line{margin-top:4px!important;font-weight:700;color:var(--text)!important}
+.migration-hint{background:var(--card2);border-left:3px solid var(--accent);padding:10px 13px;border-radius:8px;font-size:13px;margin-top:12px!important}
 .study-start{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px;margin-bottom:18px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
 .study-start label{font-size:13px;color:var(--muted);font-weight:700}
 .study-start select{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;font:inherit}

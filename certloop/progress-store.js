@@ -37,6 +37,24 @@
     if (parts.length !== 3) return key;
     return (parts[0] === 'SAP-C02' ? '' : parts[0] + ':') + parts[1] + ':' + parts[2];
   }
+  function checkpointId(cp) { return (cp.exam === 'SAP-C02' ? '' : cp.exam + ':') + cp.category + ':' + cp.idx; }
+  function nextCheckpoint(checkpoints, progress, exam) {
+    const sorted = checkpoints.filter(cp => cp.exam === exam).sort((a, b) => a.category.localeCompare(b.category) || a.idx - b.idx);
+    if (!sorted.length) return null;
+    const currentExam = progress.selectedExam || 'SAP-C02';
+    const lesson = currentExam === exam ? progress.dailyLesson : progress.savedLessons?.[exam];
+    const session = currentExam === exam ? progress.session : progress.savedSessions?.[exam];
+    const scores = progress.checkpointScores || {};
+    if (lesson && lesson.completedAt == null) {
+      const cp = sorted.find(item => checkpointId(item) === lesson.checkpointID);
+      if (cp && ((session?.checkpointID === lesson.checkpointID && session.index < (session.questionIDs?.length || 0)) || scores[lesson.checkpointID] == null)) return cp;
+    }
+    const unseen = sorted.find(cp => scores[checkpointId(cp)] == null);
+    if (unseen) return unseen;
+    const failed = sorted.find(cp => scores[checkpointId(cp)] < cp.pass);
+    if (failed) return failed;
+    return sorted.reduce((best, cp) => (scores[checkpointId(cp)] || 0) * (best.nums?.length || 1) < (scores[checkpointId(best)] || 0) * (cp.nums?.length || 1) ? cp : best);
+  }
   function webCheckpointKey(id) {
     const m = id.match(/^(?:(SAP-C02|SAA-C03):)?(.+):(\d+)$/);
     return m ? `${m[1] || 'SAP-C02'}|${m[2]}|${m[3]}` : null;
@@ -71,6 +89,13 @@
     [...(a.highlights || []), ...(b.highlights || [])].forEach(item => highlights.set(item.id, item));
     result.highlights = [...highlights.values()];
     result.webNotes = [a.webNotes, b.webNotes].filter(Boolean).filter((value, index, array) => array.indexOf(value) === index).join('\n\n');
+    const newer = (left, right, field) => (left && (!right || (left[field] || 0) > (right[field] || 0))) ? left : right;
+    result.dailyLesson = newer(a.dailyLesson, b.dailyLesson, 'date') || null;
+    result.session = newer(a.session, b.session, 'startedQuestion') || null;
+    result.savedLessons = { ...a.savedLessons, ...b.savedLessons };
+    result.savedSessions = { ...a.savedSessions, ...b.savedSessions };
+    for (const exam of new Set([...Object.keys(a.savedLessons || {}), ...Object.keys(b.savedLessons || {})])) result.savedLessons[exam] = newer(a.savedLessons?.[exam], b.savedLessons?.[exam], 'date');
+    for (const exam of new Set([...Object.keys(a.savedSessions || {}), ...Object.keys(b.savedSessions || {})])) result.savedSessions[exam] = newer(a.savedSessions?.[exam], b.savedSessions?.[exam], 'startedQuestion');
     return result;
   }
   function syncLegacy() {
@@ -143,10 +168,29 @@
       const id = cpId(key);
       state.checkpointScores[id] = Math.max(state.checkpointScores[id] || 0, correct);
       state.webCheckpointRecords[id] = { correct, total, at: Date.now() };
+      if (state.dailyLesson?.checkpointID === id) state.dailyLesson.completedAt = now();
       await save(); syncLegacy();
     },
     async setWebNotes(text) { state.webNotes = text; await save(); },
-    async chooseExam(exam) { state.selectedExam = exam; await save(); },
+    async chooseExam(exam) {
+      const previous = state.selectedExam || 'SAP-C02';
+      if (previous === exam) return;
+      state.savedLessons = { ...state.savedLessons, [previous]: state.dailyLesson || null };
+      state.savedSessions = { ...state.savedSessions, [previous]: state.session || null };
+      state.selectedExam = exam;
+      state.dailyLesson = state.savedLessons[exam] || null;
+      state.session = state.savedSessions[exam] || null;
+      await save();
+    },
+    nextCheckpoint(checkpoints, exam) { return nextCheckpoint(checkpoints, state, exam); },
+    async startDaily(cp) {
+      const id = checkpointId(cp);
+      if (state.dailyLesson?.checkpointID !== id || state.dailyLesson?.completedAt != null) state.dailyLesson = { checkpointID: id, date: now(), readAt: null, completedAt: null };
+      await save();
+    },
+    async markDailyRead(cp) {
+      if (state.dailyLesson?.checkpointID === checkpointId(cp)) { state.dailyLesson.readAt = now(); await save(); }
+    },
     exportJSON() { return JSON.stringify(state, null, 2); },
     summary(exam) {
       const list = state.attempts.filter(a => a.questionID.startsWith(exam + '-'));
@@ -155,5 +199,5 @@
     },
   };
   root.ProgressStore = api;
-  if (typeof module !== 'undefined') module.exports = { merge, cpId, webCheckpointKey, validate, empty };
+  if (typeof module !== 'undefined') module.exports = { merge, cpId, checkpointId, nextCheckpoint, webCheckpointKey, validate, empty };
 })(typeof window !== 'undefined' ? window : globalThis);

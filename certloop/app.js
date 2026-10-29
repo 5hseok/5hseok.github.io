@@ -103,8 +103,11 @@ function renderHome() {
     `${DATA.questions.length}문항 · 개념집 ${DATA.concepts.length}개 · ${DATA.categories.length}개 카테고리`;
   const activeExam = ProgressStore.value.selectedExam || 'SAP-C02';
   const stats = ProgressStore.summary(activeExam);
+  const next = ProgressStore.nextCheckpoint(CPS, activeExam);
   $('#examSelect').value = activeExam;
   $('#progressSummary').textContent = `${activeExam} · ${stats.attempts}회 풀이 · 정답률 ${stats.rate == null ? '기록 없음' : stats.rate + '%'} · 복습할 오답 ${stats.wrong}개`;
+  $('#todayLine').textContent = next ? `오늘의 범위 · ${shortCat(next.category)} · 체크포인트 ${next.idx}/${next.total}` : '';
+  $('#migrationHint').hidden = stats.attempts > 0;
 
   // 자격증별 오답 카운트
   const wrongIds = new Set(LS.wrong);
@@ -240,11 +243,11 @@ function gradeUI(picked) {
 }
 
 /* ---------- 개념 ---------- */
-function openConcept(i, anchorText) {
+function openConcept(i, anchorText, readingMarkdown, todayCheckpoint) {
   const c = DATA.concepts[i];
   show('concept');
   $('#todayNotice').hidden = true;
-  const html = renderMD(c.markdown);
+  const html = renderMD(readingMarkdown || c.markdown);
   $('#conceptContent').innerHTML = html;
   // TOC
   const heads = $$('#conceptContent h2, #conceptContent h3');
@@ -253,6 +256,13 @@ function openConcept(i, anchorText) {
     `<a onclick="document.getElementById('h_${idx}').scrollIntoView({behavior:'smooth'})"
         style="${h.tagName === 'H3' ? 'padding-left:12px;font-size:12.5px' : ''}">${escapeHtml(h.textContent)}</a>`).join('');
   decorateCheckpoints($('#conceptContent'), c);
+  if (todayCheckpoint) {
+    const button = document.createElement('button');
+    button.className = 'btn btn-primary';
+    button.textContent = `개념을 읽었어요 · 체크포인트 ${todayCheckpoint.idx} 풀기`;
+    button.onclick = () => App.startCheckpoint(todayCheckpoint.exam, todayCheckpoint.category, todayCheckpoint.idx);
+    $('#conceptContent').appendChild(button);
+  }
   runMermaid($('#conceptContent'));
   if (anchorText) {
     const target = heads.find(h => h.textContent.includes(anchorText));
@@ -391,7 +401,10 @@ const App = {
     const file = input.files?.[0];
     if (!file) return;
     try {
-      const result = await ProgressStore.importJSON(await file.text(), DATA.questions, CPS);
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const progressText = parsed.format === 'certloop-start-pack' ? JSON.stringify(parsed.progress) : text;
+      const result = await ProgressStore.importJSON(progressText, DATA.questions, CPS);
       $('#notesArea').value = LS.notes;
       renderHome();
       alert(`기록을 합쳤습니다. 풀이 ${result.attempts}회 · 체크포인트 ${result.checkpoints}개. 기존 웹 기록도 보존했습니다.`);
@@ -399,16 +412,14 @@ const App = {
     finally { input.value = ''; }
   },
   async chooseExam(exam) { await ProgressStore.chooseExam(exam); renderHome(); },
-  startToday() {
+  async startToday() {
     const exam = ProgressStore.value.selectedExam || 'SAP-C02';
-    const list = CPS.filter(cp => cp.exam === exam).sort((a,b) => a.category.localeCompare(b.category) || a.idx-b.idx);
-    const scores = ProgressStore.value.checkpointScores || {};
-    const id = cp => (cp.exam === 'SAP-C02' ? '' : cp.exam + ':') + cp.category + ':' + cp.idx;
-    const cp = list.find(cp => scores[id(cp)] == null) || list.find(cp => scores[id(cp)] < cp.pass) || list[0];
+    const cp = ProgressStore.nextCheckpoint(CPS, exam);
     if (!cp) { alert('이 자격증의 체크포인트가 없습니다.'); return; }
+    await ProgressStore.startDaily(cp);
     const conceptIndex = DATA.concepts.findIndex(c => c.exam === cp.exam && c.category === cp.category);
     if (conceptIndex < 0) { App.startCheckpoint(cp.exam, cp.category, cp.idx); return; }
-    openConcept(conceptIndex, cp.sections?.[0]);
+    openConcept(conceptIndex, cp.readingMarkdown ? null : cp.sections?.[0], cp.readingMarkdown, cp);
     $('#todayNotice').textContent = `${exam} · 체크포인트 ${cp.idx}/${cp.total} · 개념을 읽고 해당 체크포인트 버튼을 누르세요.`;
     $('#todayNotice').hidden = false;
   },
@@ -431,6 +442,7 @@ const App = {
     startQuiz(shuffle(pool), `${shortCat(cat)} · CP${idx} ${cp.range}`);
     Q.cpKey = cpKey(exam, cat, idx);
     Q.cpPass = cp.pass;
+    ProgressStore.markDailyRead(cp).catch(error => alert('읽기 기록 저장 실패: ' + error.message));
   },
   startWrong(exam) {
     const set = new Set(LS.wrong);
