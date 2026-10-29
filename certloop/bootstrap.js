@@ -29,7 +29,7 @@
     });
   }
   function validate(pack) {
-    if (pack?.format !== 'certloop-content-pack' || pack.version !== 1 || !pack.data ||
+    if (!['certloop-content-pack', 'certloop-start-pack'].includes(pack?.format) || pack.version !== 1 || !pack.data ||
         !Array.isArray(pack.data.questions) || !Array.isArray(pack.data.concepts) || !Array.isArray(pack.data.checkpoints) || !Array.isArray(pack.data.categories) ||
         pack.data.questions.length < 1 || pack.data.questions.length > 50000 ||
         new Set(pack.data.questions.map(q => q.id)).size !== pack.data.questions.length ||
@@ -56,7 +56,11 @@
       if (file.size > 30_000_000) throw Error('30MB 이하의 문제집 파일을 선택해 주세요.');
       const pack = JSON.parse(await file.text());
       validate(pack);
-      await putPack(pack);
+      if (pack.progress) {
+        await ProgressStore.init(pack.data.questions, pack.data.checkpoints);
+        await ProgressStore.importJSON(JSON.stringify(pack.progress), pack.data.questions, pack.data.checkpoints);
+      }
+      await putPack({ format: 'certloop-content-pack', version: 1, data: pack.data });
       location.reload();
     } catch (error) { status.textContent = error.message; if (document.querySelector('#setup').hidden) alert('문제집 업데이트 실패: ' + error.message); input.value = ''; }
   }
