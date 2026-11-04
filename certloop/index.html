@@ -109,7 +109,7 @@
       <input id="contentUpdate" type="file" accept="application/json,.json" hidden>
       <div class="settings-caption">풀이 이력·복습 일정·북마크·메모를 JSON 파일로 보관합니다. PWA 삭제 전 백업해 주세요.</div>
     </div>
-    <h2 class="group-label">AI 코치</h2><div class="native-group"><button class="settings-row link" onclick="App.goTab('coach')">API 키 · AI 서비스 설정 <span>›</span></button><div class="settings-caption">PWA의 AI 코치 연결은 아직 준비 중입니다. 기존 iPhone 앱의 설정은 그대로 유지됩니다.</div></div>
+    <h2 class="group-label">AI 코치</h2><div class="native-group"><button class="settings-row link" onclick="App.goTab('coach')">API 키 · AI 서비스 설정 <span>›</span></button><div class="settings-caption">Anthropic 또는 OpenAI 키로 질문합니다. 키는 이번 실행 중에만 사용하며 학습 백업에는 포함하지 않습니다.</div></div>
     <h2 class="group-label">복습 규칙</h2><div class="native-group"><div class="settings-caption">정답은 1 → 3 → 7 → 14 → 30일 간격으로 다시 만납니다. 오답은 10분 후 복습할 수 있어요.</div></div>
     <h2 class="group-label">메모와 화면</h2><div class="native-group"><button class="settings-row link" id="dockBtn" onclick="App.toggleDock()">공통 메모 열기 <span>›</span></button><button class="settings-row link" id="themeBtn">테마 전환 <span>›</span></button></div>
     <h2 class="group-label">앱과 자료</h2><div class="native-group"><div class="settings-row">지원 시험 <span>SAP-C02 · SAA-C03 · DOP-C02 · AIP-C01</span></div><div class="settings-row" id="settingsDataCount">문제 · 개념집</div><div class="settings-caption">옵시디언 문제집과 보유 PDF에서 정리한 자료를 이 기기에 저장합니다.</div></div>
@@ -180,6 +180,7 @@
 <script src="lib/marked.min.js"></script>
 <script src="lib/mermaid.min.js"></script>
 <script src="progress-store.js?v=20261029i"></script>
-<script src="bootstrap.js?v=20261104a"></script>
+<script src="study-extras.js?v=20261104b"></script>
+<script src="bootstrap.js?v=20261104b"></script>
 </body>
 </html>

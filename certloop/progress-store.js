@@ -45,15 +45,17 @@
     const lesson = currentExam === exam ? progress.dailyLesson : progress.savedLessons?.[exam];
     const session = currentExam === exam ? progress.session : progress.savedSessions?.[exam];
     const scores = progress.checkpointScores || {};
+    const skipped = progress.skippedCheckpoints || {};
     if (lesson && lesson.completedAt == null) {
       const cp = sorted.find(item => checkpointId(item) === lesson.checkpointID);
-      if (cp && ((session?.checkpointID === lesson.checkpointID && session.index < (session.questionIDs?.length || 0)) || scores[lesson.checkpointID] == null)) return cp;
+      if (cp && !skipped[lesson.checkpointID] && (lesson.manual || (session?.checkpointID === lesson.checkpointID && session.index < (session.questionIDs?.length || 0)) || scores[lesson.checkpointID] == null)) return cp;
     }
-    const unseen = sorted.find(cp => scores[checkpointId(cp)] == null);
+    const unseen = sorted.find(cp => scores[checkpointId(cp)] == null && !skipped[checkpointId(cp)]);
     if (unseen) return unseen;
-    const failed = sorted.find(cp => scores[checkpointId(cp)] < cp.pass);
+    const failed = sorted.find(cp => scores[checkpointId(cp)] < cp.pass && !skipped[checkpointId(cp)]);
     if (failed) return failed;
-    return sorted.reduce((best, cp) => (scores[checkpointId(cp)] || 0) * (best.nums?.length || 1) < (scores[checkpointId(best)] || 0) * (cp.nums?.length || 1) ? cp : best);
+    const available = sorted.filter(cp => !skipped[checkpointId(cp)]);
+    return available.length ? available.reduce((best, cp) => (scores[checkpointId(cp)] || 0) * (best.nums?.length || 1) < (scores[checkpointId(best)] || 0) * (cp.nums?.length || 1) ? cp : best) : null;
   }
   function webCheckpointKey(id) {
     const m = id.match(/^(?:([A-Z]{3}-C\d+):)?(.+):(\d+)$/);
@@ -89,6 +91,7 @@
     [...(a.highlights || []), ...(b.highlights || [])].forEach(item => highlights.set(item.id, item));
     result.highlights = [...highlights.values()];
     result.webNotes = [a.webNotes, b.webNotes].filter(Boolean).filter((value, index, array) => array.indexOf(value) === index).join('\n\n');
+    result.skippedCheckpoints = { ...a.skippedCheckpoints, ...b.skippedCheckpoints };
     const newer = (left, right, field) => (left && (!right || (left[field] || 0) > (right[field] || 0))) ? left : right;
     result.dailyLesson = newer(a.dailyLesson, b.dailyLesson, 'date') || null;
     result.session = newer(a.session, b.session, 'startedQuestion') || null;
@@ -192,14 +195,22 @@
       await save();
     },
     nextCheckpoint(checkpoints, exam) { return nextCheckpoint(checkpoints, state, exam); },
-    async startDaily(cp) {
+    async startDaily(cp, manual = false) {
       const id = checkpointId(cp);
+      if (state.skippedCheckpoints) delete state.skippedCheckpoints[id];
       if (state.dailyLesson?.checkpointID !== id || state.dailyLesson?.completedAt != null) state.dailyLesson = { checkpointID: id, date: now(), readAt: null, completedAt: null };
+      if (manual) state.dailyLesson.manual = true;
       await save();
     },
     async markDailyRead(cp) {
       if (state.dailyLesson?.checkpointID === checkpointId(cp)) { state.dailyLesson.readAt = now(); await save(); }
     },
+    async skipCheckpoint(cp) {
+      state.skippedCheckpoints = { ...state.skippedCheckpoints, [checkpointId(cp)]: now() };
+      if (state.dailyLesson?.checkpointID === checkpointId(cp)) state.dailyLesson = null;
+      await save();
+    },
+    async saveSessionSnapshot(snapshot) { state.session = { ...state.session, ...snapshot }; await save(); },
     async beginSession(title, questionIDs, checkpointID = null) {
       state.session = { id: crypto.randomUUID(), title, questionIDs, index: 0, selected: [], submitted: false, correct: 0, startedQuestion: now(), checkpointID };
       await save();

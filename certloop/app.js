@@ -74,7 +74,15 @@ function renderMD(md, { callouts = true } = {}) {
   // mermaid 코드블록 → div.mermaid
   html = html.replace(/<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g,
     (_, code) => `<div class="mermaid">${decodeEnt(code)}</div>`);
-  return html;
+  const clean = document.createElement('template'); clean.innerHTML = html;
+  clean.content.querySelectorAll('script,iframe,object,embed,form,input,textarea,style,link,meta').forEach(el => el.remove());
+  clean.content.querySelectorAll('*').forEach(el => {
+    for (const attr of [...el.attributes]) {
+      if (attr.name.startsWith('on') && !(attr.name === 'onclick' && /^App\.openConceptDock\(\d+,null,false\)$/.test(attr.value))) el.removeAttribute(attr.name);
+      if (['href','src','xlink:href'].includes(attr.name) && /^\s*(javascript|vbscript):/i.test(attr.value)) el.removeAttribute(attr.name);
+    }
+  });
+  return clean.innerHTML;
 }
 function runMermaid(container) {
   if (!window.mermaid) return;
@@ -237,6 +245,7 @@ function startQuiz(list, label, checkpoint = null, force = false) {
     return;
   }
   Q.list = list; Q.idx = 0; Q.score = 0; Q.answered = new Array(list.length).fill(null);
+  Q.minIndex = 0;
   Q.scopeLabel = label || ''; Q.cpKey = checkpoint ? cpKey(checkpoint.exam, checkpoint.category, checkpoint.idx) : null;
   Q.cpPass = checkpoint?.pass || null;
   ProgressStore.beginSession(label || '연습', list.map(item => item.id), checkpoint ? (checkpoint.exam === 'SAP-C02' ? '' : checkpoint.exam + ':') + checkpoint.category + ':' + checkpoint.idx : null).catch(error => alert('풀이 세션 저장 실패: ' + error.message));
@@ -267,6 +276,7 @@ function renderQuestion() {
       <h2 class="qtitle">${escapeHtml(q.title)}</h2>
       <div class="qbody md">${renderMD(q.body, { callouts: false })}</div>
       <div class="quiz-tools"><button id="bookmarkQuestion" onclick="App.toggleBookmark()">${ProgressStore.value.bookmarks.includes(q.id) ? '◆ 북마크' : '◇ 북마크'}</button><button onclick="App.editQuestionNote()">✎ 메모</button></div>
+      <div class="quiz-tools"><button onclick="App.askCoach()">AI 코치에게 질문</button><button onclick="App.prev()" ${Q.idx <= (Q.minIndex || 0) ? 'disabled' : ''}>이전 문제</button>${Q.answered[Q.idx] ? '<button onclick="App.retryQuestion()">다시 풀기</button>' : ''}</div>
       <span class="multi-hint">정답 ${q.answer.length}개를 선택하세요</span>
       <ul class="choices" id="choices">
         ${keys.map(k => `
@@ -327,6 +337,10 @@ function openConcept(i, anchorText, readingMarkdown, todayCheckpoint) {
     `<a role="button" tabindex="0" onclick="App.jumpToHeading('h_${idx}')"
         style="${h.tagName === 'H3' ? 'padding-left:12px;font-size:12.5px' : ''}">${escapeHtml(h.textContent)}</a>`).join('');
   decorateCheckpoints($('#conceptContent'), c);
+  const wrongButton = document.createElement('button');
+  wrongButton.className = 'btn btn-ghost'; wrongButton.textContent = '이 개념집의 오답 복습';
+  wrongButton.onclick = () => StudyExtras.chooseWrong(c.exam, c.category);
+  $('#conceptContent').prepend(wrongButton);
   if (todayCheckpoint) {
     const button = document.createElement('button');
     button.className = 'btn btn-primary';
@@ -523,7 +537,8 @@ const App = {
     const byId = new Map(DATA.questions.map(item => [item.id, item]));
     const list = session.questionIDs.map(id => byId.get(id));
     if (list.some(item => !item)) { alert('현재 문제집에서 이전 풀이 문항을 찾지 못했습니다.'); return; }
-    Q.list = list; Q.idx = session.index; Q.score = session.correct; Q.answered = new Array(list.length).fill(null);
+    Q.list = list; Q.idx = session.index; Q.score = session.correct; Q.answered = session.answers || new Array(list.length).fill(null);
+    Q.minIndex = session.answers ? (session.minIndex || 0) : session.index;
     Q.scopeLabel = session.title; Q.cpKey = session.checkpointID ? ProgressStore.webCheckpointKey(session.checkpointID) : null;
     Q.cpPass = CPS.find(cp => (cp.exam === 'SAP-C02' ? '' : cp.exam + ':') + cp.category + ':' + cp.idx === session.checkpointID)?.pass || null;
     if (session.submitted) Q.answered[Q.idx] = { picked: session.selected, correct: list[Q.idx].answer.length === session.selected.length && list[Q.idx].answer.every(letter => session.selected.includes(letter)) };
@@ -533,11 +548,11 @@ const App = {
   resumePendingStudy() { $('#pendingStudyDialog').close(); pendingQuizRequest = null; App.resumeStudy(); },
   beginPendingStudy() { const request = pendingQuizRequest; $('#pendingStudyDialog').close(); pendingQuizRequest = null; if (request) startQuiz(request.list, request.label, request.checkpoint, true); },
   cancelPendingStudy() { $('#pendingStudyDialog').close(); pendingQuizRequest = null; },
-  async startToday() {
+  async startToday(chosen) {
     const exam = ProgressStore.value.selectedExam || 'SAP-C02';
-    const cp = ProgressStore.nextCheckpoint(CPS, exam);
-    if (!cp) { alert('이 자격증의 체크포인트가 없습니다.'); return; }
-    await ProgressStore.startDaily(cp);
+    const cp = chosen || ProgressStore.nextCheckpoint(CPS, exam);
+    if (!cp) { StudyExtras.map(); return; }
+    await ProgressStore.startDaily(cp, !!chosen);
     const conceptIndex = DATA.concepts.findIndex(c => c.exam === cp.exam && c.category === cp.category);
     if (conceptIndex < 0) { App.startCheckpoint(cp.exam, cp.category, cp.idx); return; }
     openConcept(conceptIndex, cp.readingMarkdown ? null : cp.sections?.[0], cp.readingMarkdown, cp);
@@ -569,9 +584,9 @@ const App = {
     if (!pool.length) { alert('이 체크포인트에 연결된 문항이 없습니다.'); return; }
     startQuiz(shuffle(pool), `체크포인트 ${idx}`, cp);
   },
-  startWrong(exam) {
-    const set = new Set(LS.wrong);
-    let pool = DATA.questions.filter(q => set.has(q.id) && q.exam === (exam || App.currentExam()));
+  startWrong(exam, category) {
+    if (category === undefined) { StudyExtras.chooseWrong(exam || App.currentExam()); return; }
+    let pool = DATA.questions.filter(q => ProgressStore.value.reviews[q.id]?.lastCorrect === false && q.exam === (exam || App.currentExam()) && (!category || q.category === category));
     pool = shuffle(pool).slice(0, 20);
     if (!pool.length) { alert('저장된 오답이 없습니다. 문제를 풀면 틀린 문제가 여기 모입니다.'); return; }
     startQuiz(pool, '오답 복습');
@@ -595,18 +610,30 @@ const App = {
     const correct = gradeUI(picked);
     Q.answered[Q.idx] = { picked, correct };
     if (correct) Q.score++;
-    try { await ProgressStore.recordAttempt(Q.list[Q.idx], picked, correct, Math.max(0, (performance.now() - Q.questionStart) / 1000), Q.cpKey ? 'checkpoint' : 'practice'); await ProgressStore.submitInSession(correct); }
+    try { await ProgressStore.recordAttempt(Q.list[Q.idx], picked, correct, Math.max(0, (performance.now() - Q.questionStart) / 1000), Q.cpKey ? 'checkpoint' : 'practice'); await App.saveQuizPosition(); }
     catch (error) { alert('학습 기록 저장 실패: ' + error.message + '\n기록 내보내기로 백업해 주세요.'); }
     $('#scoreText').textContent = `정답 ${Q.score}`;
     $('#submitBtn').style.display = 'none';
     $('#nextBtn').style.display = 'inline-block';
   },
   async next() {
-    await ProgressStore.advanceSession();
-    if (Q.idx < Q.list.length - 1) { Q.idx++; renderQuestion(); }
+    if (!Q.answered[Q.idx]) return;
+    Q.idx++;
+    await App.saveQuizPosition();
+    if (Q.idx < Q.list.length) { renderQuestion(); window.scrollTo(0, 0); }
     else renderResult();
   },
-  prev() { if (Q.idx > 0) { Q.idx--; renderQuestion(); } },
+  async prev() { if (Q.idx > (Q.minIndex || 0)) { Q.idx--; await App.saveQuizPosition(); renderQuestion(); window.scrollTo(0, 0); } },
+  async saveQuizPosition() {
+    const answer = Q.answered[Q.idx];
+    await ProgressStore.saveSessionSnapshot({ index: Q.idx, minIndex: Q.minIndex || 0, correct: Q.score, answers: Q.answered, selected: answer?.picked || [], submitted: !!answer, startedQuestion: Date.now()/1000-978307200 });
+  },
+  async retryQuestion() {
+    if (Q.answered[Q.idx]?.correct) Q.score--;
+    Q.answered[Q.idx] = null;
+    await App.saveQuizPosition(); renderQuestion();
+  },
+  askCoach() { StudyExtras.askQuestion(Q.list[Q.idx], Q.answered[Q.idx]); },
   toggleConfig() { App.goHome(); },
   openConcept, doSearch, toggleDock, dockTab, openConceptDock,
 };
@@ -615,6 +642,10 @@ window.addEventListener('popstate', () => {
   const entry = navigationTrail.pop();
   restoringNavigation = true;
   show(entry?.view || 'home');
+  if (currentView === 'home') renderHome();
+  if (currentView === 'library') renderLibrary();
+  if (currentView === 'growth') renderGrowth();
+  if (currentView === 'settings') renderSettings();
   restoringNavigation = false;
   requestAnimationFrame(() => window.scrollTo(0, entry?.y || 0));
 });
@@ -642,6 +673,7 @@ async function renderResult() {
       <p>정답률 ${pct}%</p>
       ${cpLine}
       <button class="btn btn-primary" onclick="App.goTab('home')">학습 홈으로</button>
+      <button class="btn btn-ghost" onclick="App.prev()">마지막 문제 다시 보기</button>
     </div>`;
 }
 
@@ -692,7 +724,7 @@ async function init() {
   // ESC로 도크 닫기
   document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleDock(false); });
 
-  renderHome(); renderLibrary(); renderGrowth(); renderSettings();
+  renderHome(); renderLibrary(); renderGrowth(); renderSettings(); StudyExtras.init();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => registration.update()).catch(console.warn);
 }
 if (document.readyState !== 'loading') init();
