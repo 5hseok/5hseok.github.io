@@ -86,7 +86,15 @@ function runMermaid(container) {
 /* ---------- 뷰 전환 ---------- */
 const TAB_TITLES = { home: 'CertLoop', library: '', coach: 'AI 코치', growth: '', settings: '' };
 let lastTab = 'home';
+let currentView = 'home';
+let restoringNavigation = false;
+const navigationTrail = [];
 function show(view) {
+  if (!restoringNavigation && view !== currentView) {
+    navigationTrail.push({ view: currentView, y: window.scrollY });
+    history.pushState({ certloop: true }, '');
+  }
+  currentView = view;
   $$('.view').forEach(v => v.classList.remove('active'));
   $('#view-' + view).classList.add('active');
   const isTab = view in TAB_TITLES;
@@ -316,7 +324,7 @@ function openConcept(i, anchorText, readingMarkdown, todayCheckpoint) {
   const heads = $$('#conceptContent h2, #conceptContent h3');
   heads.forEach((h, idx) => h.id = 'h_' + idx);
   $('#conceptToc').innerHTML = '<b>목차</b>' + heads.map((h, idx) =>
-    `<a onclick="document.getElementById('h_${idx}').scrollIntoView({behavior:'smooth'})"
+    `<a role="button" tabindex="0" onclick="App.jumpToHeading('h_${idx}')"
         style="${h.tagName === 'H3' ? 'padding-left:12px;font-size:12.5px' : ''}">${escapeHtml(h.textContent)}</a>`).join('');
   decorateCheckpoints($('#conceptContent'), c);
   if (todayCheckpoint) {
@@ -484,7 +492,16 @@ const App = {
     if (view === 'growth') renderGrowth();
     if (view === 'settings') renderSettings();
   },
-  closeDetail() { App.goTab(lastTab); },
+  closeDetail() { if (navigationTrail.length) history.back(); else App.goTab(lastTab); },
+  jumpToHeading(id) {
+    const target = document.getElementById(id);
+    if (!target) return;
+    $('.toc-disclosure').open = false;
+    requestAnimationFrame(() => {
+      const offset = $('header').getBoundingClientRect().height + ($('#todayNotice').hidden ? 0 : $('#todayNotice').getBoundingClientRect().height) + 12;
+      window.scrollTo({ top: window.scrollY + target.getBoundingClientRect().top - offset, behavior: 'smooth' });
+    });
+  },
   renderLibrary,
   async chooseExam(exam) { await ProgressStore.chooseExam(exam); renderHome(); renderLibrary(); renderGrowth(); renderSettings(); },
   async setDailyGoal(value) { await ProgressStore.setDailyGoal(value); renderHome(); renderSettings(); },
@@ -594,6 +611,13 @@ const App = {
   openConcept, doSearch, toggleDock, dockTab, openConceptDock,
 };
 window.App = App;
+window.addEventListener('popstate', () => {
+  const entry = navigationTrail.pop();
+  restoringNavigation = true;
+  show(entry?.view || 'home');
+  restoringNavigation = false;
+  requestAnimationFrame(() => window.scrollTo(0, entry?.y || 0));
+});
 
 async function renderResult() {
   stopTimer();
